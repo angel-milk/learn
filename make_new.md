@@ -222,3 +222,10 @@ func (srv *endlessServer) getListener(laddr string) (l net.Listener, err error) 
 	+ GET方式，id=1111
 + 片段
 	+ 通常我们说是html中的锚点。使用在客户端，不会传送给服务器。
+
+
+### HTTPS HTTP
++ HTTPS协议需要CA申请整数
++ HTTP运行在TCP之上，传输内容为明文。HTTPS运行在SSL/TLS，SSL/TLS运行在TCP上，传输内容都经过加密。
++ 端口号 HTTP:80,HTTPS:443
++ HTTPS防止运营商劫持(减少)
