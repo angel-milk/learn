@@ -55,3 +55,47 @@ span分为已被分配或者空闲的。
 
 
 #### gc
+
+
+### 内存逃逸
+> runtime/stbus.go 函数noescape\
+> 通过指针的动态范围，决定一个变量是否分配到栈上，还是堆上。
+
+#### 为什么分析,避免内存逃逸
+> golang编译器，判断变量的生命周期。如果认为在函数结束后，不被外部使用，分配到栈上，否则分配到堆上。\
+> 栈上的内存是自动回收清理，且空间有限。堆的上内存需要处理gc，才能达到回收。频繁的gc操作，影响运行性能，所以要减少gc的操作。
+
+#### 常见内存逃逸
+1. 局部的遍历指针返回，被外部引用，生命周期大于栈。
+2. 发送指针或带有指针的值到channel，编译时无法知道goroutine会在channel接收，编译器无法判断什么时候释放。
+3. 切片上存储指针或带有指针的值。如[]string,导致切片内容逃逸，引用值一直在堆上。
+4. 切片append导致超出容量，切片重新分配地址，切片背后的存储基于运行的数据进行扩充，就会分配到堆上。
+5. interface类型上调用方法，在interface调用方法动态调度，只有在运行时才知道。
+
+#### 如何避免
+1. golang接口类型调用时动态的，因此不能在编译确定，高频访问的函数，避免调用接口。
+2. 避免使用变量指针作为参数。
+3. 预设定好slice的长度，避免频繁超过范围容量，重新分配。
+
+#### 方法
+1. go build -gcflags '-m' main.go 查看编译信息
+```golang
+cmd/ptest.go:139:15: v1 escapes to heap
+cmd/ptest.go:139:15: io.Writer(os.Stdout) escapes to heap
+cmd/ptest.go:143:15: io.Writer(os.Stdout) escapes to heap
+```
+2. go tool compile -S 生成汇编
+```golang
+$ go tool compile -S escape.go | grep escape.go:10
+    0x001d 00029 (escape.go:10) PCDATA  $2, $1
+    0x001d 00029 (escape.go:10) PCDATA  $0, $0
+    0x001d 00029 (escape.go:10) LEAQ    type.int(SB), AX
+    0x0024 00036 (escape.go:10) PCDATA  $2, $0
+    0x0024 00036 (escape.go:10) MOVQ    AX, (SP)
+    0x0028 00040 (escape.go:10) CALL    runtime.newobject(SB)
+    0x002d 00045 (escape.go:10) PCDATA  $2, $1
+    0x002d 00045 (escape.go:10) MOVQ    8(SP), AX
+    0x0032 00050 (escape.go:10) MOVQ    $1, (AX)
+
+    //可以看到，这里的00040有调用runtime.newobject(SB)这个方法，看到这个方法大家就应该懂了！
+```
